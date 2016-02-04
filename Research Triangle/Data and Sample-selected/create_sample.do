@@ -1,4 +1,4 @@
-* EVAN JOHNSTON: runtime approx. 33.178 mins 
+* EVAN JOHNSTON: runtime approx. 10.53 mins 
 
 /*
 Uses the initial IPUMS extract to create samples and variables for all analyses.
@@ -36,6 +36,8 @@ Relevant variables include:
 	cpuma0010	consistent puma variable (2000-2014)
 	cntygrp98	county group geographical variable (1980)
 Created variables include:
+					Binary indicator of adult, civilian, noninstitutionalized ulation
+	employed		Binary indicator of employment
 	austin			Binary Austin MSA indicator
 	svalley			Binary Silicon Valley indicator
 	bay_area		Binary Bay Area indicator
@@ -86,26 +88,27 @@ use ipums_1980_90_00_05_13_5p5p5p1p1p_initial.dta, clear
 	rename CNTYGP98 cntygp98
 	rename CPUMA0010 cpuma0010
 
-*Must be working in prior year.
-	drop if wkswork2==0
-*Age 18-64 only.  Variable coded from <1 year old to 90+ 
-	drop if age<18 | age>64
-*Drop institutionalized pop (mental institutions, military barracs, etc.)
+* define civilian noninstitutional population
+	* must be older than 16
+	drop if age<16
+	* must not be instiutionalized (prison, mental facility, homes for the aged, etc.)
 	drop if gq==3
-*drop unpaid family workers (includes self-EMP=13,14, wage=22, Gs=25,27,28 
-* unpaid=29)
-	drop if classwkrd==29
-*self-employment (removed from wages calculation)
+	* non-military
+	drop if inlist(occ,0,905) & year==1980
+	drop if inlist(occ,0,903,904,905) & year==1990
+	drop if inlist(occ,0,980,981,982,983) & year==2000
+	drop if inlist(occ,0,980,981,982,983) & (year==2005 | year==2013)
+
+* define employed persons
+	gen employed = 0
+	replace employed = 1 if wkswork2>0
+
+* define self-employment (removed from wages calculation)
 	gen selfemp = 0
 	replace selfemp = 1 if inlist(classwkrd,13,14)
 	*incorporated self-employment as potential entrepreneurial proxy
 	gen selfemp_inc = 0
 	replace selfemp_inc = 1 if classwkrd == 14
-*Drop military (different #s depending on year)
-	drop if inlist(occ,0,905) & year==1980
-	drop if inlist(occ,0,903,904,905) & year==1990
-	drop if inlist(occ,0,980,981,982,983) & year==2000
-	drop if inlist(occ,0,980,981,982,983) & (year==2005 | year==2013)
 
 *Create Austin 
 	gen austin = 0
@@ -176,7 +179,7 @@ use ipums_1980_90_00_05_13_5p5p5p1p1p_initial.dta, clear
 					Solano
 					
 	*Note: The new MSA delineations include San Benito County
-			but the older ones omit it. Population of San Benito
+			but the older ones omit it. ulation of San Benito
 			County in 2013 is 57,600.
 	*/
 	label variable bay_area "Bay Area"
@@ -317,7 +320,7 @@ use ipums_1980_90_00_05_13_5p5p5p1p1p_initial.dta, clear
 			educd ind1990 occ wkswork1 wkswork2 uhrswork incwage county /// 
 		selfemp selfemp_inc austin svalley high_tech high_tech_CoC sector ///
 			race_group school college ///
-		puma conspuma cntygp98 cpuma0010 res_tri bay_area
+		puma conspuma cntygp98 cpuma0010 res_tri bay_area  employed
 
 save ipums_1980_90_00_05_13_5p5p5p1p1p.dta, replace
 *Split dataset by year
@@ -379,7 +382,7 @@ drop if year!=1980
 			educd ind1990 wkswork1 uhrswork incwage county /// 
 		selfemp selfemp_inc austin svalley high_tech high_tech_CoC sector ///
 			race_group school college occ1990dd occ8cat occ4cat hrwagelimit ///
-		puma conspuma cntygp98 cpuma0010 res_tri bay_area
+		puma conspuma cntygp98 cpuma0010 res_tri bay_area  employed
 	
 save ipums_1980_5p.dta, replace
 
@@ -441,8 +444,7 @@ drop if year!=1990
 			educd ind1990 wkswork1 uhrswork incwage county /// 
 		selfemp selfemp_inc austin svalley high_tech high_tech_CoC sector ///
 			race_group school college occ1990dd occ8cat occ4cat hrwagelimit ///
-		puma conspuma cntygp98 cpuma0010 res_tri bay_area
-
+		puma conspuma cntygp98 cpuma0010 res_tri bay_area  employed
 	
 save ipums_1990_5p.dta, replace
 
@@ -504,7 +506,7 @@ drop if year!=2000
 			educd ind1990 wkswork1 uhrswork incwage county /// 
 		selfemp selfemp_inc austin svalley high_tech high_tech_CoC sector ///
 			race_group school college occ1990dd occ8cat occ4cat hrwagelimit	///
-		puma conspuma cntygp98 cpuma0010 res_tri bay_area
+		puma conspuma cntygp98 cpuma0010 res_tri bay_area  employed
 	
 save ipums_2000_5p.dta, replace
 
@@ -517,12 +519,12 @@ drop if year!=2005
 	rename occ occ_old  
 	rename occ_new occ
 	
-	*Wages: top coded wage for 2005: $325,576.92
-		*note: for ACS samples we use the national average of the
-		* 99.5th percentile per state as the upper limit.
+	*Wages: top coded wage for 2005: 629000 (from data)
+		*note: for ACS samples IPUMS uses the
+		* 99.5th percentile as the upper limit.
 	*Limit on hourly wages to (LIMIT*1.5)/(50 weeks * 35 hours per week)
-	replace incwage = incwage*1.5 if incwage==325576.92
-	gen hrwagelimit = (325576.92*1.5)/(50*35)
+	replace incwage = incwage*1.5 if incwage==629000
+	gen hrwagelimit = (629000*1.5)/(50*35)
 
 	*create occ1990dd variable from the Dorn crosswalks
 	merge m:1 occ using occ2005_occ1990dd.dta
@@ -573,7 +575,7 @@ drop if year!=2005
 			educd ind1990 wkswork1 uhrswork incwage county /// 
 		selfemp selfemp_inc austin svalley high_tech high_tech_CoC sector ///
 			race_group school college occ1990dd occ8cat occ4cat hrwagelimit ///
-		puma conspuma cntygp98 cpuma0010 res_tri bay_area
+		puma conspuma cntygp98 cpuma0010 res_tri bay_area  employed
 
 save ipums_2005_1p.dta, replace
 
@@ -581,12 +583,12 @@ use ipums_1980_90_00_05_13_5p5p5p1p1p.dta, clear
 *creates 2013 dataset
 drop if year!=2013
 
-	*Wages: top coded wage for 2013: $371,461.5
-		*note: for ACS samples we use the national average of the
-		* 99.5th percentile per state as the upper limit.
+	*Wages: top coded wage for 2013: 660000 (from data)
+		*note: for ACS samples IPUMS uses the
+		* 99.5th percentile as the upper limit.
 	*Limit on hourly wages to (LIMIT*1.5)/(50 weeks * 35 hours per week)
-	replace incwage = incwage*1.5 if incwage==371461.5
-	gen hrwagelimit = (371461.5*1.5)/(50*35)
+	replace incwage = incwage*1.5 if incwage==660000
+	gen hrwagelimit = (660000*1.5)/(50*35)
 
 	*2013 uses WKSWORK2 which bins the WKSWORK1 values
 	replace wkswork1 = 7 if wkswork2==1
@@ -651,7 +653,7 @@ drop if year!=2013
 			educd ind1990 wkswork1 uhrswork incwage county /// 
 		selfemp selfemp_inc austin svalley high_tech high_tech_CoC sector ///
 			race_group school college occ1990dd occ8cat occ4cat hrwagelimit ///
-		puma conspuma cntygp98 cpuma0010 res_tri bay_area
+		puma conspuma cntygp98 cpuma0010 res_tri bay_area employed
 		
 save ipums_2013_1p.dta, replace
 
